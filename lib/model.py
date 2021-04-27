@@ -276,8 +276,7 @@ class RPN:
         assert mode in ['train', 'inference']
 
         # Input image
-        input_tensor = KL.Input(shape=[self.config.IMAGE_SHAPE[0], self.config.IMAGE_SHAPE[1],
-                                       self.config.NUM_CHANNELS], name="input_image")
+        input_tensor = KL.Input(shape=[None, None, self.config.NUM_CHANNELS], name="input_image")
 
         # RPN feature maps
         rpn_feature_maps = self.build_feature_maps(input_tensor)
@@ -331,7 +330,8 @@ class RPN:
             layer = self.model.get_layer(name)
             if layer.output in self.model.losses:
                 continue
-            loss = (tf.reduce_mean(layer.output, keepdims=True) * self.config.LOSS_WEIGHTS.get(name, 1.))
+            loss = (tf.math.reduce_mean(layer.output, keepdims=True) * self.config.LOSS_WEIGHTS.get(name, 1.))
+            print(type(loss))
             self.model.add_loss(loss)
 
         self.model.compile(optimizer=optimizer, loss=[None] * len(self.model.outputs))
