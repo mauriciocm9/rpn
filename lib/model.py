@@ -2,11 +2,74 @@ import os
 import keras.layers as KL
 import keras.models as KM
 import keras.optimizers as KO
+from keras import backend as K
+
 import tensorflow as tf
 from keras.callbacks import CSVLogger, ModelCheckpoint
 
 from lib import losses as ls
 
+def channel_attention(input_feature, ratio=8):
+    channel = input_feature._keras_shape[-1]
+    
+    shared_layer_one = KL.Dense(int(channel/ratio),
+                             activation='relu',
+                             kernel_initializer='he_normal',
+                             use_bias=True,
+                             bias_initializer='zeros')
+    shared_layer_two = KL.Dense(channel,
+                             kernel_initializer='he_normal',
+                             use_bias=True,
+                             bias_initializer='zeros')
+    
+    avg_pool = KL.GlobalAveragePooling2D()(input_feature)    
+    avg_pool = KL.Reshape((1,1,channel))(avg_pool)
+    assert avg_pool._keras_shape[1:] == (1,1,channel)
+    avg_pool = shared_layer_one(avg_pool)
+    assert avg_pool._keras_shape[1:] == (1,1,channel//ratio)
+    avg_pool = shared_layer_two(avg_pool)
+    assert avg_pool._keras_shape[1:] == (1,1,channel)
+    
+    max_pool = KL.GlobalMaxPooling2D()(input_feature)
+    max_pool = KL.Reshape((1,1,channel))(max_pool)
+    assert max_pool._keras_shape[1:] == (1,1,channel)
+    max_pool = shared_layer_one(max_pool)
+    assert max_pool._keras_shape[1:] == (1,1,channel//ratio)
+    max_pool = shared_layer_two(max_pool)
+    assert max_pool._keras_shape[1:] == (1,1,channel)
+    
+    cbam_feature = KL.Add()([avg_pool,max_pool])
+    cbam_feature = KL.Activation('sigmoid')(cbam_feature)
+    
+    return KL.multiply([input_feature, cbam_feature])
+
+def spatial_attention(input_feature):
+    kernel_size = 7
+    cbam_feature = input_feature
+    
+    avg_pool = KL.Lambda(lambda x: K.mean(x, axis=3, keepdims=True))(cbam_feature)
+    assert avg_pool._keras_shape[-1] == 1
+    max_pool = KL.Lambda(lambda x: K.max(x, axis=3, keepdims=True))(cbam_feature)
+    assert max_pool._keras_shape[-1] == 1
+    concat = KL.Concatenate(axis=3)([avg_pool, max_pool])
+    assert concat._keras_shape[-1] == 2
+    cbam_feature = KL.Conv2D(filters = 1,
+                    kernel_size=kernel_size,
+                    strides=1,
+                    padding='same',
+                    activation='sigmoid',
+                    kernel_initializer='he_normal',
+                    use_bias=False)(concat)	
+    assert cbam_feature._keras_shape[-1] == 1
+    
+    return KL.multiply([input_feature, cbam_feature])
+
+
+def build_cbam_model(inputs, reduction_ratio=0.5):
+
+    cbam_feature = channel_attention(inputs, reduction_ratio)
+    cbam_feature = spatial_attention(cbam_feature)
+    return cbam_feature
 
 class RPN:
 
@@ -63,7 +126,7 @@ class RPN:
             block: str
                 Current block label for generating layer names
             use_bias: bool
-                To use or not use a bias in conv layers.
+                To use or not use a bias in conv KL.
 
             Returns
             -------
@@ -110,7 +173,7 @@ class RPN:
             strides: tuple
                 A tuple of integers indicating the strides to make during convolution.
             use_bias: bool
-                To use or not use a bias in conv layers.
+                To use or not use a bias in conv KL.
 
             Returns
             -------
@@ -250,7 +313,13 @@ class RPN:
         shared = KL.Conv2D(512, (3, 3), padding='same', activation='relu', strides=anchor_stride,
                            name='rpn_conv_shared')(input_feature_map)
 
+        shared = build_cbam_model(shared)
+
+        # Add CBAM in here and see results compared with this
+        # check why the hell we need to resize and how dtectron2 do it????
+
         # Anchor Score. [batch, height, width, anchors per location * 2].
+        print(shared.shape)
         x = KL.Conv2D(2 * anchors_per_location, (1, 1), padding='valid', activation='linear',
                       name='rpn_class_raw')(shared)
 
@@ -276,7 +345,7 @@ class RPN:
         assert mode in ['train', 'inference']
 
         # Input image
-        input_tensor = KL.Input(shape=[None, None, self.config.NUM_CHANNELS], name="input_image")
+        input_tensor = KL.Input(shape=[self.config.IMAGE_SHAPE[0], self.config.IMAGE_SHAPE[1], self.config.NUM_CHANNELS], name="input_image")
 
         # RPN feature maps
         rpn_feature_maps = self.build_feature_maps(input_tensor)

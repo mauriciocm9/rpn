@@ -16,7 +16,7 @@ class NucleiConfig(Config):
     NAME = 'nuclei'
 
     # Data parameters
-    IMAGE_SHAPE = (1080, 720)
+    IMAGE_SHAPE = (512, 512)
     ANCHOR_SCALES = (16, 32, 64, 128, 256)
     TRAIN_ANCHORS_PER_IMAGE = 128
     MEAN_PIXEL = np.array([43.53, 39.56, 48.22])
@@ -37,7 +37,7 @@ class NucleiSequence(DataSequence):
         self.path = path
 
         # Image IDs are the folder names in this dataset
-        self.image_ids = next(os.walk(self.path+"/fakes"))[2]
+        self.image_ids = next(os.walk(self.path+"/fakes"))[2][:10]
         np.random.shuffle(self.image_ids)
 
         # Store the configuration class
@@ -59,7 +59,7 @@ class NucleiSequence(DataSequence):
 
         # Only RGB images - todo: fix this
         # image_batch = []
-        image_batch = np.zeros(((self.config.BATCH_SIZE, ) + (1080,720, 3)))
+        image_batch = np.zeros(((self.config.BATCH_SIZE, ) + self.config.IMAGE_SHAPE + (3,)))
         # rpn_match_batch = []
         rpn_match_batch = np.zeros((self.config.BATCH_SIZE, self.anchors.shape[0], 1))
         # rpn_bbox_batch = []
@@ -94,7 +94,7 @@ class NucleiSequence(DataSequence):
 
     def load_image(self, _id):
         filename = os.path.join(self.path, "fakes", _id)
-        return img_to_array(load_img(filename, target_size=(1080,720)))
+        return img_to_array(load_img(filename, target_size=self.config.IMAGE_SHAPE))
 
     def get_bboxes(self, _id):
         # Get the filenames for all of the nuclei masks
@@ -102,7 +102,7 @@ class NucleiSequence(DataSequence):
         mask = cv2.imread(filename, 0)
         bboxes = []
 
-        mask = cv2.resize(mask, (1080, 720))
+        mask = cv2.resize(mask, self.config.IMAGE_SHAPE)
 
         # mask2 = np.zeros(mask.shape + (3,))
 
@@ -117,6 +117,9 @@ class NucleiSequence(DataSequence):
             (x, y, w, h) = cv2.boundingRect(cnt)
             bboxes.append([x, y, x + w, y + h])
             # cv2.rectangle(mask2, (x, y), (x + w, y + h), (255, 255, 255), 2)
+
+        if len(bboxes) == 0:
+            bboxes.append([0,0,0,0])
 
         # cv2.imwrite(_id+".jpg, mask2)
         # print(_id)
