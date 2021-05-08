@@ -16,7 +16,7 @@ def backbone_shapes(image_shape, backbone_strides):
     Returns
     -------
     list of tuples (height, width) of feature map shapes
-
+    (64, 64), (32, 32), (8, 8), (16, 16)
     """
     return [(image_shape[0] // stride, image_shape[1] // stride) for stride in backbone_strides]
 
@@ -291,7 +291,7 @@ def visualize_rpn_predictions(image, rpn_match, rpn_bbox, anchors, top_n=100):
     argsort = np.flip(np.argsort(rpn_match[positive_idxs, 1]), axis=0)
     sorted_anchors = predicted_anchors[argsort]
     sorted_anchors = sorted_anchors[:min(top_n, sorted_anchors.shape[0])]
-
+    print(sorted_anchors)
     # One subplot
     fig, axes = plt.subplots(ncols=1)
     axes.imshow(image)

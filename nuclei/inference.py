@@ -5,7 +5,7 @@ from lib import utils as ut
 from train import NucleiSequence, NucleiConfig
 
 
-VALIDATION_PATH = 'truset/validation'
+VALIDATION_PATH = r'A:\Deep Learning Datasets\nucleus\validation'
 
 
 class NucleiInferenceConfig(NucleiConfig):
